@@ -2,7 +2,7 @@ local BASE=(...):match('(.-)[^%.]+$')
 local minigui=require"minigui"
 local g=love.graphics
 
-local Minimal_Button={}
+local Minimal_Button={} -- Just make a blank table for new widget
 function Minimal_Button:init(text,x,y,w,h, opt)
     opt=opt or {}
     self.inner={text=text, font=opt.font or g.getFont(), segment=opt.segment or 16}
@@ -10,7 +10,7 @@ function Minimal_Button:init(text,x,y,w,h, opt)
     self.matrix={width=w,height=h}
     return self
 end
-function Minimal_Button:draw()
+function Minimal_Button:draw() -- override the draw method
     love.graphics.setColor(self.colors and self.colors[self.state] and
     self.colors[self.state].bg or self.gui.colors[self.state].bg)
     
@@ -24,4 +24,4 @@ function Minimal_Button:draw()
     self.matrix.height/2-self.inner.font:getHeight()/2
     g.print(self.inner.text,self.x+offx,self.y+offy)
 end
-minigui:registerWidgetClass(Minimal_Button, "Button")
+minigui:registerWidgetClass(Minimal_Button, "Button") -- minigui will take care of the rest.

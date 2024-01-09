@@ -1,5 +1,5 @@
 # MINIGUI
-#### Minimal Gui library with single file core and easy to extend (see minimal widget folder).
+#### Minimal Gui library for LÖVE 2D with single file core and easy to extend (see minimal widget folder).
 
 ### Hello world button:
 ```lua

@@ -31,4 +31,14 @@ function love.draw() gui:draw() end
 function love.mousepressed(...) gui:mousepressed(...) end
 function love.mousereleased(...)gui.mousereleased(...)end
 ```
-### (Documentation TDB)
+### Documentation
+#### Create New instance of minigui
+Before you can use minigui, you must make new instance of it, but here something
+you must know about make new instance of minigui.
+- If you want to add widgets to the current instance, just require'minigui' without creating a new instance. Then create an instance in main.lua and your widget will be included in the new instance.
+- You can create a new instance from another instance and all the widgets that were in the old instance will be in the new instance. You can add new widgets to each instance and they will be independent.
+
+#### Create New Widget
+```lua
+
+```

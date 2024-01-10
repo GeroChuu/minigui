@@ -15,9 +15,20 @@ end
 local function aabb(mx,my,x,y,m)
     return mx>x and my>y and mx<x+m.width and my<y+m.height
 end
+local function circle(mx,my,x,y,m)
+    return m.radius*m.radius>=math.abs(mx-x)+math.abs(my-y)
+end
+local function image_mask(mx,my,x,y,m)
+    local u, v = math.floor(mx-x+.5), math.floor(my-y+.5)
+	if u < 0 or u >= m.mask:getWidth() or v < 0 or v >= m.mask:getHeight() then
+		return false
+	end
+	local _,_,_,a = m.mask:getPixel(u,v)
+	return a > 0
+end
 local function minimal_logic(self,dt)
     local pr,rl,fg,fl=self.gui:getImmediateState(self,aabb)
-    return {pressed=pr,released=rl,focusGained=fg,focusLost=fl,toggle=self.toggle}
+    return {pressed=pr,released=rl,focusGained=fg,focusLost=fl}
 end
 local function minimal_draw(self)
     love.graphics.setColor(self.gui.colors[self.state].bg)
@@ -54,7 +65,7 @@ local function getPosition(id)
     if love.system.getOS()=="Windows" then
         return love.mouse.getPosition()
     end
-    return love.touch.getPosotion(id)
+    return love.touch.getPosition(id)
 end
 
 local function isArrayInclude(t,value,eq_func)
@@ -69,7 +80,7 @@ local default_colors={
     hover ={bg=color("#ff18ff"),fg=color("#181818")},
     active={bg=color("#ffffff"),fg=color("#181818")},
     focus ={bg=color("#8090ff"),fg=color("#ffffff")},
-    freeze={bg=color("#B5C6C5"),fg=color("#999999")},
+    freeze={bg=color("#B5C6C5",.5),fg=color("#999999")},
     cursor=color("#ff0099"),
 }
 
@@ -92,6 +103,7 @@ function gui:init(colors, font)
     self.touch={}
     self.touch.actived={}
     self.touch.focused=nil
+    self.touch.pressed={}
     self.touch.released={}
 
     self.debug_state={
@@ -131,7 +143,7 @@ function gui:getImmediateState(widget,hover) --> pressed,released,focusGained,fo
 
         return false,false,false,false
     end
-    if love.system.getOS()=="Windows" then
+    if false then --love.system.getOS()=="Windows" then
         return self:setStateWithMouse(widget,hover)
     else
         return self:setStateWithTouch(widget,hover)
@@ -156,6 +168,7 @@ function gui:setStateWithMouse(widget,hover) --> pressed, released, focusGained,
             widget.__dc_timer=0
         end
     end
+    if widget.state=="freeze" then widget.state="normal" end
     local mx,my=love.mouse.getPosition()
     self.mouse.x,self.mouse.y=mx,my
     if hover(mx,my,widget.x,widget.y,widget.matrix) then
@@ -201,9 +214,20 @@ function gui:setStateWithMouse(widget,hover) --> pressed, released, focusGained,
             return false,true,false,false
         end
     else
-        widget.state="normal"
-        self.mouse.actived=nil
+        if widget.state=="active" or widget.state=="hover" then
+            if love.mouse.isDown(1) or
+            love.mouse.isDown(2) or
+            love.mouse.isDown(3) then
+                widget.state="active"
+            else
+                widget.state="normal"
+                self.mouse.actived=nil
+            end
+        end
+
         if self.mouse.released then
+            widget.state="normal"
+            self.mouse.actived=nil
             if widget.focused or self.last_focused==widget.id then
                 self.mouse.focused=nil
                 self.last_focused=nil
@@ -223,6 +247,7 @@ function gui:setStateWithTouch(widget,hover)
             widget.__dc_timer=0
         end
     end
+    if widget.state=="freeze" then widget.state="normal" end
     local touches=getTouches()
     for _,id in ipairs(touches) do
         local x,y=getPosition(id)
@@ -236,15 +261,20 @@ function gui:setStateWithTouch(widget,hover)
                     return tval==val
                 end) then
                     table.insert(self.touch.actived, widget.id)
-                    if not widget.focused then
                         widget.focused=true
+                    if not widget.focused then
                         self.touch.focused=widget.id
+                        if self.widget_focused then self.widget_focused.focused=false end
                         self.widget_focused=widget
                         return true,false,true,false
                     else
                         self.last_focused=self.last_focused or widget.id
                     end
-                    return true,false,false,false
+                    if isArrayInclude(self.touch.pressed,widget,function(tval,val)
+                        return hover(tval.x,tval.y, val.x,val.y, val.matrix)
+                    end) then
+                        return true,false,false,false
+                    end
                 end
             else
                 widget.state="normal"
@@ -257,7 +287,11 @@ function gui:setStateWithTouch(widget,hover)
         return false,false,false,true
     end
     if widget.state=="active" then
-        widget.state="normal"
+        if #touches>0 then
+            widget.state="active"
+        else
+            widget.state="normal"
+        end
         if isArrayInclude(self.touch.released,widget,function(tval,val)
             return hover(tval.x,tval.y, val.x,val.y, val.matrix)
         end) then
@@ -316,8 +350,8 @@ function gui:draw()
     self:clearWidgets()
     self:setMouse(_,_,nil,false,false)
     self.mouse.hovered=nil
-    self.touch.actived={}
     self.touch.released={}
+    self.touch.pressed={}
     love.graphics.setColor(1,1,1)
     if self.debug then
         self.debug_state.frame_count=self.debug_state.frame_count+1
@@ -329,21 +363,28 @@ function gui:draw()
 end
 function gui:mousepressed(x,y,btn, ...)
     self:setMouse(x,y,btn,true,false)
+    if self.debug then table.insert(self.touch.pressed,{x=x,y=y}) end
 end
 function gui:mousereleased(x,y,btn,...)
     self:setMouse(x,y,btn,false,true)
-    table.insert(self.touch.released,{x=x,y=y})
+    if self.debug then
+        table.insert(self.touch.released,{x=x,y=y})
+        self.touch.actived={}
+    end
 end
-function gui:touchreleased(x,y,btn,...)
-    table.insert(self.touch.released,{x=x,y=y})
+function gui:touchpressed(id,x,y, ...)
+    table.insert(self.touch.pressed,{x=x,y=y})
 end
-function gui:set_dt(dt)
+function gui:touchreleased(id,x,y,...)
+    table.insert(self.touch.released,{x=x,y=y})
+    self.touch.actived={}
+end
+function gui:setDT(dt)
     self.dt=dt
 end
 function gui:add(widget)
     widget.gui=self
     widget.id=widget.id or widget
---     print((self.widget_focused and self.widget_focused.id))
     if self.widget_focused and (self.widget_focused.id==widget.id) then
         widget.focused=true
     end
@@ -353,7 +394,6 @@ end
 function gui:getColors()
     return copytable(self.colors or default_colors, true)
 end
-gui.hex2color=color
 function gui:debug_log(str)
     if love.system.getOS()~="Windows" then
         self.debug_state.debug_str=self.debug_state.debug_str..tostring(str).."\n"
@@ -365,7 +405,7 @@ function gui:checkMemoryUsageOn(frame_limit)
     frame_limit=frame_limit or math.huge
     assert(self.debug_state.frame_count<frame_limit, tostring(collectgarbage("count")))
 end
-function gui:registerWidgetClass(class,name)
+function gui:registerWidgetClass(class,name, mt)
     for k in pairs(minimal_widget) do
         if class[k]==nil then class[k]=minimal_widget[k] end
     end
@@ -375,9 +415,11 @@ function gui:registerWidgetClass(class,name)
         o:init(...)
         return o
     end
-    setmetatable(class, {__call=function(c,...)
+    mt=mt or {}
+    mt.__call=mt.__call or function(c,...)
         return c.new(...)
-    end})
+    end
+    setmetatable(class, mt)
     self[name]=class
 end
 function gui:new(...)
@@ -388,4 +430,11 @@ function gui:new(...)
     o:init(...)
     return o
 end
+
+gui.hex2color=color
+gui.isArrayInclude=isArrayInclude
+gui.aabb=aabb
+gui.circle=circle
+gui.image_mask=image_mask
+
 return gui

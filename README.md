@@ -65,5 +65,5 @@ function MyWidget:draw()
     if self.mouse.focused then love.graphics.setColor(self.gui.colors.focus.bg) end
     love.graphics.rectangle("fill", self.x, self.y, self.matrix.width, self.matrix.height)
 end
-minigui:registerWidgetClass(Minimal_Button, "Button") -- minigui will take care of the rest.
+minigui:registerWidgetClass(MyWidget, "MyWidget") -- minigui will take care of the rest.
 ```

@@ -12,13 +12,12 @@ end
 local function color(hex, alpha)
     return {tonumber(hex:sub(2,3),16)/255, tonumber(hex:sub(4,5),16)/255, tonumber(hex:sub(6,7),16)/255, alpha or 1}
 end
-
 local function aabb(mx,my,x,y,m)
     return mx>x and my>y and mx<x+m.width and my<y+m.height
 end
 local function minimal_logic(self,dt)
-    local pr,rl,fg,fl,dc=self.gui:getImmediateState(self,aabb)
-    return {pressed=pr,released=rl,focusGained=fg,focusLost=fl,doubleClick=dc,toggle=self.toggle}
+    local pr,rl,fg,fl=self.gui:getImmediateState(self,aabb)
+    return {pressed=pr,released=rl,focusGained=fg,focusLost=fl,toggle=self.toggle}
 end
 local function minimal_draw(self)
     love.graphics.setColor(self.gui.colors[self.state].bg)
@@ -38,9 +37,32 @@ local minimal_widget={
     visible=true,interactive=true,
     update=minimal_logic,
     draw=minimal_draw,
-    setId=setId,
+    setID=setId,
+    doubleClick=false,
     __dc_timer=0,__dc_delay=.3,__click_count=0, -- for Double Click event.
 }
+
+local function getTouches()
+    if love.system.getOS()=="Windows" then
+        if love.mouse.isDown(1) then return {1} end
+        return {}
+    end
+    return love.touch.getTouches()
+end
+local function getPosition(id)
+    if not id then return nil,nil end
+    if love.system.getOS()=="Windows" then
+        return love.mouse.getPosition()
+    end
+    return love.touch.getPosotion(id)
+end
+
+local function isArrayInclude(t,value,eq_func)
+    for _,t_val in ipairs(t) do
+        if eq_func(t_val,value) then return true end
+    end
+    return false
+end
 
 local default_colors={
     normal={bg=color("#ff99ff"),fg=color("#181818")},
@@ -65,15 +87,12 @@ function gui:init(colors, font)
     self.mouse.actived=nil
     self.mouse.focused=nil
     self.mouse.pushed =nil
-    self.mouse.last_focused=nil
     self.mouse.invalid_enter=false
 
-    self.touch={touches={}}
+    self.touch={}
     self.touch.actived={}
-    self.touch.focused={}
-    self.touch.pushed ={}
-    self.touch.last_focused={}
-    self.touch.invalid_enter={}
+    self.touch.focused=nil
+    self.touch.released={}
 
     self.debug_state={
         frame_limit=nil,
@@ -88,6 +107,7 @@ function gui:init(colors, font)
 
     self.widgets={}
     self.widget_focused=nil
+    self.last_focused=nil
 
     return self
 end
@@ -100,18 +120,22 @@ function gui:clearWidgets()
         table.remove(self.widgets,id)
     end
 end
-function gui:getImmediateState(widget,hover) --> pressed,released,focusGained,focusLost,double click
+function gui:getImmediateState(widget,hover) --> pressed,released,focusGained,focusLost
     if not widget.interactive then
         widget.state="freeze"
         self.mouse.focused=nil
         if widget.focused then
             widget.focused=false
-            return false,false,false,true,false
+            return false,false,false,true
         end
 
-        return false,false,false,false,false
+        return false,false,false,false
     end
-    return self:setStateWithMouse(widget,hover)
+    if love.system.getOS()=="Windows" then
+        return self:setStateWithMouse(widget,hover)
+    else
+        return self:setStateWithTouch(widget,hover)
+    end
 end
 function gui:setActiveWidgetWhenMouseDown(widget, num)
     if love.mouse.isDown(num) then
@@ -124,7 +148,7 @@ function gui:setActiveWidgetWhenMouseDown(widget, num)
     end
     return false
 end
-function gui:setStateWithMouse(widget,hover) --> pressed, released, focusGained, focusLost, double click
+function gui:setStateWithMouse(widget,hover) --> pressed, released, focusGained, focusLost
     if widget.__click_count>0 then
         widget.__dc_timer=widget.__dc_timer+self.dt
         if widget.__dc_timer>widget.__dc_delay then
@@ -135,7 +159,7 @@ function gui:setStateWithMouse(widget,hover) --> pressed, released, focusGained,
     local mx,my=love.mouse.getPosition()
     self.mouse.x,self.mouse.y=mx,my
     if hover(mx,my,widget.x,widget.y,widget.matrix) then
-        if self.mouse.invalid_enter then return false,false,false,false,false end
+        if self.mouse.invalid_enter then return false,false,false,false end
         if self.mouse.hovered==nil then
             self.mouse.hovered=widget.id
             widget.state="hover"
@@ -151,17 +175,17 @@ function gui:setStateWithMouse(widget,hover) --> pressed, released, focusGained,
             self.mouse.pushed=widget.id
             if self.mouse.focused~=widget.id then
                 if self.mouse.focused~=nil then
-                    self.mouse.last_focused=self.mouse.focused
+                    self.last_focused=self.mouse.focused
                     if self.widget_focused then self.widget_focused.focused=false end
                 end
                 self.widget_focused=widget
                 self.mouse.focused=widget.id
                 widget.focused=true
                 -- PRESSED and FOCUS GAINED
-                return true,false,true,false,false
+                return true,false,true,false
             end
             -- Just PRESSED
-            return true,false,false,false,false
+            return true,false,false,false
         end
         if self.mouse.released and self.mouse.pushed==widget.id then
             self.mouse.pushed=nil
@@ -170,63 +194,85 @@ function gui:setStateWithMouse(widget,hover) --> pressed, released, focusGained,
                 widget.__dc_timer=0
                 widget.__click_count=0
                 -- DOUBLE CLICK event will returning the first click as normal click.
-                return false,false,false,false,true
+                widget.doubleClick=true
             end
             -- TOGGLE always toggled when mouse button released is left.
             if self.mouse.btn==1 then widget.toggle=not widget.toggle end
-            return false,true,false,false,false
+            return false,true,false,false
         end
     else
         widget.state="normal"
         self.mouse.actived=nil
         if self.mouse.released then
-            if widget.focused or self.mouse.last_focused==widget.id then
+            if widget.focused or self.last_focused==widget.id then
                 self.mouse.focused=nil
-                self.mouse.last_focused=nil
+                self.last_focused=nil
                 widget.focused=false
                 -- FOCUS LOST
-                return false,false,false,true,false
+                return false,false,false,true
             end
         end
     end
-    return false,false,false,false,false
-end
-function gui:clearTouches()
-    for i=0,#self.touch.touches do
-        table.remove(self.touch.touches,i)
-    end
-end
-function gui:setTouch(touches)
-    self:clearTouches()
-    for _,touch in ipairs(touches) do
-        local x,y=love.touch.getPosition(touch)
-        table.insert(self.touch.touches,{id=touch,x=x,y=y})
-    end
+    return false,false,false,false
 end
 function gui:setStateWithTouch(widget,hover)
-    self:setTouch(love.touch.getTouches())
-    local index,inside=0,false
-
-    local tcs=self.touch.touches
-    while index<=#tcs do
-        index=index+1
-        local tx,ty,wx,wy=tcs[index].x,tcs[index].y,widget.x,widget.y
-        if hover(tx,ty,wx,wy,widget.matrix) then
-            hovered=true
-            break
+    if widget.__click_count>0 then
+        widget.__dc_timer=widget.__dc_timer+self.dt
+        if widget.__dc_timer>widget.__dc_delay then
+            widget.__click_count=0
+            widget.__dc_timer=0
         end
     end
-
-    if inside then
-        if #self.touch.actived<#tcs or self.mouse.actived[tcs[index].id]==widget then
-            self.mouse.actived[tcs[index].id]=widget
-            widget.state="active"
-        else
-            widget.state="normal"
+    local touches=getTouches()
+    for _,id in ipairs(touches) do
+        local x,y=getPosition(id)
+        if hover(x,y, widget.x, widget.y, widget.matrix) then
+            if self.mouse.invalid_enter then return false,false,false,false end
+            if #self.touch.actived<#touches or isArrayInclude(self.touch.actived, widget.id, function(tval,val)
+                return tval==val
+            end) then
+                widget.state="active"
+                if not isArrayInclude(self.touch.actived, widget.id, function(tval,val)
+                    return tval==val
+                end) then
+                    table.insert(self.touch.actived, widget.id)
+                    if not widget.focused then
+                        widget.focused=true
+                        self.touch.focused=widget.id
+                        self.widget_focused=widget
+                        return true,false,true,false
+                    else
+                        self.last_focused=self.last_focused or widget.id
+                    end
+                    return true,false,false,false
+                end
+            else
+                widget.state="normal"
+            end
         end
-    else
-
     end
+    if #touches>0 and self.last_focused==widget.id then
+        self.last_focused=nil
+        widget.focused=false
+        return false,false,false,true
+    end
+    if widget.state=="active" then
+        widget.state="normal"
+        if isArrayInclude(self.touch.released,widget,function(tval,val)
+            return hover(tval.x,tval.y, val.x,val.y, val.matrix)
+        end) then
+            widget.toggle=not widget.toggle
+            widget.__click_count=widget.__click_count+1
+            if widget.__click_count==2 and widget.__dc_timer<=widget.__dc_delay then
+                widget.__dc_timer=0
+                widget.__click_count=0
+                -- DOUBLE CLICK event will returning the first click as normal click.
+                widget.doubleClick=true
+            end
+            return false,true,false,false
+        end
+    end
+    return false,false,false,false
 end
 function gui:WhileEachC(callbacks, cond, ...)
     local i=1
@@ -250,10 +296,14 @@ function gui:WhileEachCRev(callbacks, cond, ...)
 end
 function gui:draw()
     self:WhileEachCRev("draw", function(_,widget,_) return widget.visible end)
+    local outside=true
     self:WhileEachC(_,function(self,widget,_)
-        if self.mouse.hovered~=nil or self.mouse.actived~=nil then
-            return
+        widget.doubleClick=false
+        if widget.state=="hover" or widget.state=="active" then
+            outside=false
         end
+    end)
+    if outside then
         if love.mouse.isDown(1) or love.mouse.isDown(2) or love.mouse.isDown(3) then
             self.widget_focused=nil
             self.mouse.invalid_enter=true
@@ -261,12 +311,14 @@ function gui:draw()
             self.mouse.invalid_enter=false
             self.mouse.pushed=nil
         end
-    end)
+    end
 
     self:clearWidgets()
     self:setMouse(_,_,nil,false,false)
-    love.graphics.setColor(1,1,1)
     self.mouse.hovered=nil
+    self.touch.actived={}
+    self.touch.released={}
+    love.graphics.setColor(1,1,1)
     if self.debug then
         self.debug_state.frame_count=self.debug_state.frame_count+1
         self:checkMemoryUsageOn(self.debug_state.frame_limit)
@@ -280,12 +332,10 @@ function gui:mousepressed(x,y,btn, ...)
 end
 function gui:mousereleased(x,y,btn,...)
     self:setMouse(x,y,btn,false,true)
-end
-function gui:touchpressed(x,y,btn, ...)
-    self:setMouse(x,y,btn,true,false)
+    table.insert(self.touch.released,{x=x,y=y})
 end
 function gui:touchreleased(x,y,btn,...)
-    self:setMouse(x,y,btn,false,true)
+    table.insert(self.touch.released,{x=x,y=y})
 end
 function gui:set_dt(dt)
     self.dt=dt
@@ -293,6 +343,7 @@ end
 function gui:add(widget)
     widget.gui=self
     widget.id=widget.id or widget
+--     print((self.widget_focused and self.widget_focused.id))
     if self.widget_focused and (self.widget_focused.id==widget.id) then
         widget.focused=true
     end

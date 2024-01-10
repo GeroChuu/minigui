@@ -1,9 +1,15 @@
 # MINIGUI
-#### Minimal Gui library for LÖVE 2D with single file core and easy to extend (see minimal widget folder).
+#### Minimal Gui library for LÖVE 2D with single file core and easy to extend (see minimal widget folder for example how to make it).
+### MiniGUI support:
+- Multitouch on mobile device
+- Immediate Event, such: pressed,released,focusGained,focusLost
+- Retain Event, such: focused,doubleClick,toggle
+- Widget State, such: normal,hover(only destop),active,freeze(not interactive)
+- Easy way to make new widget (just make a table and call registerWidgetClasset method)
 
 ### Hello world button:
 ```lua
-require'minimal_widget' -- Add aditional widget (just Button there)
+require'minimal_widget' -- Add aditional widget (just an example, replace with your own widget extenssion)
 local gui=require'minigui'() -- Create instance of minigui
 function love.update(dt)
     if gui:add(gui.Button("Hello, World!", 10, 10, 100, 40):setId(69)).released then -- You must provide id when you are in full immediate mode
@@ -17,7 +23,7 @@ function love.mousereleased(...)gui.mousereleased(...)end
 ```
 ### Combined with retained-mode:
 ```lua
-require'minimal_widget' -- Add aditional widget (just Button there)
+require'minimal_widget' -- Add aditional widget
 local gui=require'minigui'() -- Create instance of minigui
 
 local hello=gui.Button("Hello, World!", 10, 10, 100, 40)
@@ -35,7 +41,7 @@ function love.mousereleased(...)gui.mousereleased(...)end
 #### Create New instance of minigui
 Before you can use minigui, you must make new instance of it, but here something
 you must know about make new instance of minigui.
-- If you want to add widgets to the current instance, just ```local minigui=require'minigui' ``` without creating a new instance and ```minigui:registerWidgetClass(Your_Widget, "Widget_name")```. Then create an instance in main.lua and your widget will be included in the new instance ```local gui=require'minigui'() gui.Widget_name()```. 
+- If you want to add widgets to the current instance, just ```local minigui=require'minigui' ``` without creating a new instance and ```minigui:registerWidgetClass(Your_Widget, "Widget_name")```. Then create an instance in main.lua and your widget will be included in the new instance ```local gui=require'minigui'() gui.Widget_name()```.
 - You can create a new instance from another instance and all the widgets that were in the old instance will be in the new instance. You can add new widgets to each instance and they will be independent.
 
 #### Create New Widget
